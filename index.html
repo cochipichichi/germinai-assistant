@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🌱 GerminAI — Dashboard</title>
+<meta name="theme-color" content="#0d1117">
+<link rel="manifest" href="public/manifest.webmanifest">
+<link rel="icon" href="assets/icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="header" role="banner">
+  <div class="brand"><span class="logo" aria-hidden="true"></span><strong>GerminAI</strong><span class="badge">PWA</span></div>
+  <nav class="navlinks" aria-label="Navegación principal">
+    <a class="btn" href="./checklist.html">🧰 Checklist</a>
+    <a class="btn" href="./simulator.html">🧪 Simulador</a>
+    <a class="btn" href="./import.html">📥 Importar CSV</a>
+    <button class="btn" id="print">🧾 Exportar PDF</button>
+  </nav>
+</header>
+
+<main class="container" id="main" role="main">
+  <section class="card" aria-labelledby="sel-title">
+    <h1 id="sel-title">Selección de cultivo y lote</h1>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label for="species">Cultivo:</label>
+      <select id="species" class="btn" aria-label="Seleccionar cultivo"></select>
+      <label for="lot">Lote:</label>
+      <select id="lot" class="btn" aria-label="Seleccionar lote"></select>
+      <span class="meta" id="lot-meta"></span>
+    </div>
+  </section>
+
+  <section class="grid cards">
+    <article class="card" aria-labelledby="sens-title">
+      <h3 id="sens-title">📟 Sensores</h3>
+      <div class="kpi"><span>🌡️ Temp</span><div class="kpi-bar"><span id="kpi-temp"></span></div><span id="val-temp"></span></div>
+      <div class="kpi"><span>💧 Suelo</span><div class="kpi-bar"><span id="kpi-moist"></span></div><span id="val-moist"></span></div>
+      <div class="kpi"><span>💨 Viento</span><div class="kpi-bar"><span id="kpi-wind"></span></div><span id="val-wind"></span></div>
+      <div class="kpi"><span>☀️ Luz</span><div class="kpi-bar"><span id="kpi-light"></span></div><span id="val-light"></span></div>
+      <p class="meta" id="updated"></p>
+    </article>
+
+    <article class="card" aria-labelledby="hist-title">
+      <h3 id="hist-title">📈 Históricos (7 días)</h3>
+      <canvas class="spark" id="h-temp" aria-label="Histórico temperatura"></canvas>
+      <canvas class="spark" id="h-moist" aria-label="Histórico humedad suelo"></canvas>
+      <canvas class="spark" id="h-light" aria-label="Histórico horas de luz"></canvas>
+      <canvas class="spark" id="h-wind" aria-label="Histórico viento"></canvas>
+    </article>
+
+    <article class="card" aria-labelledby="act-title">
+      <h3 id="act-title">✅ Qué hacer hoy</h3>
+      <div id="actions">Calculando…</div>
+    </article>
+
+    <article class="card" aria-labelledby="cal-title">
+      <h3 id="cal-title">🗓️ Calendario</h3>
+      <div id="calendar"></div>
+    </article>
+  </section>
+</main>
+
+<script type="module">
+import { $, toast, setBar, drawSpark } from './js/ui.js';
+import { readSensors, readCalendar, readRules, readModel, readLots, readHistory } from './js/data/offline.js';
+import { evaluate } from './js/engine.js';
+
+document.getElementById('print')?.addEventListener('click', ()=>window.print());
+
+function pct(v, a, b){ return (v-a)/(b-a)*100; }
+function saveSel(species, lotId){ localStorage.setItem('species', species); localStorage.setItem('lotId', lotId); }
+function getSel(){ return { species: localStorage.getItem('species')||'tomato', lotId: localStorage.getItem('lotId')||'L-001' }; }
+
+async function populateSelectors(){
+  const lots = await readLots();
+  const speciesSet = [...new Set(lots.map(l=>l.species))];
+  const sel = getSel();
+  const sp = $('#species'); sp.innerHTML = speciesSet.map(s=>`<option value="${s}">${s}</option>`).join(''); sp.value = sel.species;
+  const lot = $('#lot'); const filt = lots.filter(l=>l.species===sp.value);
+  lot.innerHTML = filt.map(l=>`<option value="${l.lot_id}">${l.lot_id} — ${l.variety}</option>`).join('');
+  lot.value = sel.lotId;
+  function updateMeta(){
+    const L = lots.find(x=>x.lot_id===lot.value)||filt[0];
+    $('#lot-meta').textContent = L ? `DAS: ${L.days_after_sowing} — Siembra: ${L.sowed_at} — Ubicación: ${L.bed_tray}` : '';
+    saveSel(sp.value, lot.value);
+  }
+  sp.addEventListener('change', ()=>{ const f=lots.filter(l=>l.species===sp.value); lot.innerHTML = f.map(l=>`<option value="${l.lot_id}">${l.lot_id} — ${l.variety}</option>`).join(''); lot.value=f[0]?.lot_id||''; updateMeta(); refresh(); });
+  lot.addEventListener('change', ()=>{ updateMeta(); refresh(); });
+  updateMeta();
+}
+
+async function refresh(){
+  try{
+    const {species} = getSel();
+    const s = await readSensors(); s.species = species; // demo: forzar especie seleccionada
+    const cal = await readCalendar();
+    const hist = await readHistory();
+    const rules = await readRules();
+    const model = await readModel(species);
+
+    setBar($('#kpi-temp'),  pct(s.temp_c, 0, 40));  $('#val-temp').textContent  = s.temp_c.toFixed(1)+' °C';
+    setBar($('#kpi-moist'), pct(s.soil_moist_pct,0,100)); $('#val-moist').textContent = s.soil_moist_pct.toFixed(0)+' %';
+    setBar($('#kpi-wind'),  pct(s.wind_ms,0,20));   $('#val-wind').textContent  = s.wind_ms.toFixed(1)+' m/s';
+    setBar($('#kpi-light'), pct(s.light_hours,0,16)); $('#val-light').textContent = s.light_hours.toFixed(1)+' h';
+    $('#updated').textContent = 'Actualizado: ' + (s.updated_at||new Date().toISOString());
+
+    drawSpark('h-temp',  hist.temp_c);
+    drawSpark('h-moist', hist.soil_moist_pct);
+    drawSpark('h-light', hist.light_hours);
+    drawSpark('h-wind',  hist.wind_ms);
+
+    const acts = evaluate({sensors:s, calendar:cal, rules, model});
+    $('#actions').innerHTML = acts.length? acts.map(a=>`<div class="card" style="background:#ffffff08"><strong>${a.action}</strong> — <span class="badge">${a.priority}</span><br><span class="meta">${a.note||''}</span></div>`).join('') : '<p class="meta">Sin acciones críticas hoy.</p>';
+
+    const csv = localStorage.getItem('calendarCSV');
+    const items = csv? JSON.parse(csv) : null;
+    $('#calendar').innerHTML = items? ('<ul>'+items.map(x=>`<li>${x.month}: <strong>${x.task}</strong> — ${x.details||''}</li>`).join('')+'</ul>') : `<p class="meta">Mes: ${cal.month}</p><ul>${(cal.notes||[]).map(n=>`<li>${n}</li>`).join('')}</ul>`;
+  }catch(e){
+    console.error(e); toast('Error al cargar datos');
+  }
+}
+
+await populateSelectors();
+await refresh();
+
+// SW
+if('serviceWorker' in navigator && location.protocol==='https:'){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
+</script>
+</body>
+</html>

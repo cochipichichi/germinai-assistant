@@ -1,0 +1,18 @@
+[
+  {
+    "lot_id": "L-001",
+    "species": "tomato",
+    "variety": "romaine_like_example",
+    "sowed_at": "2025-10-10",
+    "bed_tray": "Tray-12",
+    "days_after_sowing": 9
+  },
+  {
+    "lot_id": "L-002",
+    "species": "lettuce",
+    "variety": "butterhead_example",
+    "sowed_at": "2025-10-12",
+    "bed_tray": "Tray-07",
+    "days_after_sowing": 7
+  }
+]

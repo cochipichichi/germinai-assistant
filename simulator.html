@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simulador — GerminAI</title>
+<link rel="icon" href="assets/icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="header"><div class="brand"><span class="logo"></span><strong>Simulador</strong></div><nav class="navlinks"><a class="btn" href="./index.html">Dashboard</a></nav></header>
+<main class="container">
+  <section class="card simulator">
+    <h1>🧪 Simulador de reglas</h1>
+    <p class="meta">Ajusta sensores y observa las acciones recomendadas.</p>
+    <div class="grid cards">
+      <div class="card"><label>🌡️ Temp (°C): <input id="s-temp" type="range" min="0" max="40" value="22" step="0.5" aria-label="Temperatura"> <span id="o-temp"></span></label></div>
+      <div class="card"><label>💧 Humedad suelo (%): <input id="s-moist" type="range" min="0" max="100" value="60" step="1" aria-label="Humedad de suelo"> <span id="o-moist"></span></label></div>
+      <div class="card"><label>💨 Viento (m/s): <input id="s-wind" type="range" min="0" max="20" value="3" step="0.5" aria-label="Viento"> <span id="o-wind"></span></label></div>
+      <div class="card"><label>☀️ Luz (h): <input id="s-light" type="range" min="0" max="16" value="12" step="0.5" aria-label="Horas de luz"> <span id="o-light"></span></label></div>
+      <div class="card"><label>🌱 Hojas: <input id="s-leaf" type="range" min="0" max="10" value="3" step="1" aria-label="Número de hojas"> <span id="o-leaf"></span></label></div>
+      <div class="card"><label>📏 Altura (cm): <input id="s-height" type="range" min="0" max="30" value="8" step="0.5" aria-label="Altura del tallo"> <span id="o-height"></span></label></div>
+      <div class="card"><label>🗓️ DAS: <input id="s-das" type="range" min="0" max="30" value="9" step="1" aria-label="Días tras siembra"> <span id="o-das"></span></label></div>
+      <div class="card"><label>🌿 Cultivo: 
+        <select id="s-species" class="btn"><option value="tomato">tomato</option><option value="lettuce">lettuce</option></select>
+      </label></div>
+    </div>
+    <div class="card">
+      <h3>✅ Acciones simuladas</h3>
+      <div id="sim-actions">—</div>
+    </div>
+  </section>
+</main>
+<script type="module">
+import { readRules, readModel } from './js/data/offline.js';
+import { evaluate } from './js/engine.js';
+
+const ids = ['temp','moist','wind','light','leaf','height','das'];
+const els = Object.fromEntries(ids.map(k=>[k, document.getElementById('s-'+k)]));
+const outs = Object.fromEntries(ids.map(k=>[k, document.getElementById('o-'+k)]));
+const speciesSel = document.getElementById('s-species');
+
+function collect(){
+  return {
+    temp_c: +els.temp.value,
+    soil_moist_pct: +els.moist.value,
+    wind_ms: +els.wind.value,
+    light_hours: +els.light.value,
+    leaf_count: +els.leaf.value,
+    stem_height_cm: +els.height.value,
+    days_after_sowing: +els.das.value,
+    species: speciesSel.value,
+    updated_at: new Date().toISOString()
+  };
+}
+function paint(){
+  outs.temp.textContent = els.temp.value+' °C';
+  outs.moist.textContent= els.moist.value+' %';
+  outs.wind.textContent = els.wind.value+' m/s';
+  outs.light.textContent= els.light.value+' h';
+  outs.leaf.textContent = els.leaf.value;
+  outs.height.textContent= els.height.value+' cm';
+  outs.das.textContent  = els.das.value+' días';
+}
+async function run(){
+  paint();
+  const rules = await readRules();
+  const model = await readModel(speciesSel.value);
+  const s = collect();
+  const acts = evaluate({sensors:s, calendar:{month:new Date().getMonth()+1}, rules, model});
+  document.getElementById('sim-actions').innerHTML = acts.length? acts.map(a=>`<div class="card" style="background:#ffffff08"><strong>${a.action}</strong> — <span class="badge">${a.priority}</span><br><span class="meta">${a.note||''}</span></div>`).join('') : '<p class="meta">Sin acciones.</p>';
+}
+[...Object.values(els)].forEach(e=> e.addEventListener('input', run));
+speciesSel.addEventListener('change', run);
+run();
+</script>
+</body>
+</html>
